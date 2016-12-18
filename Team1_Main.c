@@ -23,8 +23,37 @@
 /*---------------------------------------------------------------------------*/
 
 /* DEFINE CONSTANTS */
-int dumpHeight = 1000;
-int armLimit = 1300;
+int dumpHeight = 1000; //Defines the height of the arm where the claw is opened.
+int armLimit = 1300; //Defines the top of the arms range of motion.
+bool armBumpVal; //Defines if the arm is at the bottom of its range of motion.
+
+/* GLOBAL INIT */
+#define MAX_VOLTAGE 127 //Maximum voltage to be applied to a motor.
+#define MIN_VOLTAGE (-127) //Minimum voltage to be applied to a motor.
+#define ARM_CLOSE_VAL 2300 //Defines the potentiometer value of where the claw is concidered "closed."
+#define ARM_OPEN_VAL 1920 //Defines the potentiometer value of where the claw is concidered "open."
+
+/*GLOBAL FUNCTIONS */
+
+//Moves the arm at the given voltage.
+void setArm(int voltage){
+	motor(A1) = motor(A2) = motor(A3) = motor(A4) = voltage;
+}
+
+//Moves the claw at the given voltage.
+void setClaw(int voltage){
+	motor(Claw1) = motor(Claw2) = voltage;
+}
+
+//Drives the left drive at the given voltage.
+void leftDrive(int voltage){
+	motor(L1) = motor(L2YL3) = voltage;
+}
+
+//Drives the right drive at the given voltage.
+void rightDrive(int voltage){
+	motor(R1) = motor(R2YR3) = voltage;
+}
 
 
 // This code is for the VEX cortex platform
@@ -64,11 +93,9 @@ void pre_auton()
 
 /*-----------------------------------------------------------------------------*/
 /*                                                                             */
-/*  pid control task                                                           */
+/*  								          Claw PID Control Task                            */
 /*                                                                             */
 /*-----------------------------------------------------------------------------*/
-#define PID_DRIVE_MAX       127
-#define PID_DRIVE_MIN     (-127)
 
 // These could be constants but leaving
 // as variables allows them to be modified in the debugger "live"
@@ -93,11 +120,11 @@ task pidController()
 	// Init the variables - thanks Glenn :)
 	pidLastError  = 0;
 
-	while( true )
+	while(true)
 	{
 
 		// Read the sensor value and scale
-		pidSensorCurrentValue = SensorValue[ clawPot ];
+		pidSensorCurrentValue = SensorValue[clawPot];
 
 		// calculate error
 		pidError = (pidSensorCurrentValue - pidRequestedValue)/10;
@@ -107,27 +134,23 @@ task pidController()
 		pidLastError  = pidError;
 
 		// Is PID control active ?
-		if( pidRunning )
+		if(pidRunning)
 		{
-
 			// calculate drive
 			pidDrive = (pid_Kp * pidError) + (pid_Kd * pidDerivative);
 
 			// limit drive
-			if( pidDrive > PID_DRIVE_MAX )
-				pidDrive = PID_DRIVE_MAX;
-			if( pidDrive < PID_DRIVE_MIN )
-				pidDrive = PID_DRIVE_MIN;
+			if(pidDrive > MAX_VOLTAGE)
+				pidDrive = MAX_VOLTAGE;
+			if(pidDrive < MIN_VOLTAGE)
+				pidDrive = MIN_VOLTAGE;
 
 			// send to motor
-			motor(Claw1) = pidDrive ;
-		}
-		else
-		{
+			motor(Claw1) = motor(Claw2) = pidDrive ;
 		}
 
 		// Run at 50Hz
-		wait1Msec( 25 );
+		wait1Msec(25);
 	}
 }
 
@@ -162,26 +185,6 @@ task autonomous()
 /*  You must modify the code to add your own robot specific commands here.   */
 /*---------------------------------------------------------------------------*/
 
-//Moves the arm at the given voltage.
-void setArm(int voltage){
-	motor(A1) = motor(A2) = motor(A3) = motor(A4) = voltage;
-}
-
-//Moves the claw at the given voltage.
-void setClaw(int voltage){
-	motor(Claw1) = motor(Claw2) = voltage;
-}
-
-//Drives the left drive at the given voltage.
-void leftDrive(int voltage){
-	motor(L1) = motor(L2YL3) = voltage;
-}
-
-//Drives the right drive at the given voltage.
-void rightDrive(int voltage){
-	motor(R1) = motor(R2YR3) = voltage;
-}
-
 //ARCADE DRIVE SYSTEM
 void arcadeDrive(){
 	leftDrive(vexRT(Ch3) + vexRT(Ch1));
@@ -194,80 +197,56 @@ void tankDrive(){
 	rightDrive(vexRT(Ch2));
 }
 
-/*
-//CLAW CONTROL SYSTEM
+//CLAW CONTROL
 void userClaw(){
-	if(vexRT(Btn5U)){
-		//pidRequestedValue = 1350;
+	if(vexRT(Btn5U)){ //If arm close button is pushed close the arm at full voltage.
+		setClaw(MIN_VOLTAGE);
 		pidRunning = false;
-		motor(Claw1) = motor(Claw2) = 127;
-	}
-	else if(vexRT(Btn6U)){
-		pidRunning = true;
-		pidRequestedValue = 2900;
-	}
-	else if(!pidRunning){
-		motor(Claw1) = motor(Claw2) = 10;
-	}
-
-	//motor(Claw) = -127*vexRT(Btn5U) + 127*vexRT(Btn6U);
-}
-*/
-
-#define CLOSE_VAL 2300
-
-//ALTERNATE CLAW CONTROL
-void userClaw(){
-	if(vexRT(Btn5U)){ //If arm close button is pushed close the arm at max voltage.
-		setClaw(-127);
 	}
 	else if(vexRT(Btn6U)){ //If arm open button is pushed open the arm at full voltage.
-		setClaw(127);
+		setClaw(MAX_VOLTAGE);
+		pidRunning = false;
 	}
-	else if(SensorValue(clawPot) >= CLOSE_VAL){ //If arm is not controlled, but closed past close point give a gipping voltage.
+	else if(SensorValue(clawPot) >= ARM_CLOSE_VAL && !pidRunning){ //If arm is not controlled, but closed past close point give a gipping voltage.
 		setClaw(-15);
 	}
-	else { //Else, claw will not power.
+	else if(!pidRunning){ //Else, claw will not power.
 		setClaw(0);
 	}
 }
 
-
 //ARM CONTROL SYSTEM
 void userArm(){
 	if (vexRT(Btn6D) && SensorValue(I2C_1) < dumpHeight){ //Arm moving up
-		setArm(127); //Full upward voltage.
+		setArm(MAX_VOLTAGE); //Full upward voltage.
 	}
 	else if(vexRT(Btn6D) && SensorValue(I2C_1) < armLimit){ //Arm moving up
-		setArm(90); //Full upward voltage.
+		setArm(90); //Upward voltage.
 		pidRunning = true;
-		pidRequestedValue = 2900; //Open claw
+		pidRequestedValue = ARM_OPEN_VAL; //Open claw
 	}
 	else if(SensorValue(armBump) == 0){ //Arm at bottom
 		setArm(-10); //Hold voltage applied when claw is at the base.
-		SensorValue(I2C_1) = 0; //TODO: read from I2C the integrated encoder data and write functions to manipulate.
+		SensorValue(I2C_1) = 0; //Sets the encoder on the arm to 0.
 	}
 	else{ //Arm moving down
-		setArm(-50); //Full downward voltage.
+		setArm(-50); //Downward voltage.
 	}
 }
-bool armBumpVal;
-int clawtest;
 
+
+/* USER CONTROL CODE */
 task usercontrol()
 {
-	//startTask( pidController );
-	//pidRunning = true;
+	//Init PID task:
+	startTask(pidController);
+	pidRunning = true;
+	pidRequestedValue = ARM_OPEN_VAL;
 
-	// User control code here, inside the loop
+	//Loop through control systems.
 	while (true)
 	{
-		// This is the main execution loop for the user control program.
-		// Each time through the loop your program should update motor + servo
-		// values based on feedback from the joysticks.
-
-	  clawtest = SensorValue(clawPot);
-
+		//Sets the value of the constant depending on the bump sensor's value.
 		armBumpVal = SensorValue(armBump) == 0;
 
 		//User control drive program:
@@ -279,6 +258,5 @@ task usercontrol()
 
 		//User control arm program:
 		userArm();
-
 	}
 }
