@@ -167,6 +167,11 @@ void setArm(int voltage){
 	motor(A1) = motor(A2) = motor(A3) = motor(A4) = voltage;
 }
 
+//Moves the claw at the given voltage.
+void setClaw(int voltage){
+	motor(Claw1) = motor(Claw2) = voltage;
+}
+
 //Drives the left drive at the given voltage.
 void leftDrive(int voltage){
 	motor(L1) = motor(L2YL3) = voltage;
@@ -189,6 +194,7 @@ void tankDrive(){
 	rightDrive(vexRT(Ch2));
 }
 
+/*
 //CLAW CONTROL SYSTEM
 void userClaw(){
 	if(vexRT(Btn5U)){
@@ -204,9 +210,28 @@ void userClaw(){
 		motor(Claw1) = motor(Claw2) = 10;
 	}
 
-
 	//motor(Claw) = -127*vexRT(Btn5U) + 127*vexRT(Btn6U);
 }
+*/
+
+#define CLOSE_VAL 2300
+
+//ALTERNATE CLAW CONTROL
+void userClaw(){
+	if(vexRT(Btn5U)){ //If arm close button is pushed close the arm at max voltage.
+		setClaw(-127);
+	}
+	else if(vexRT(Btn6U)){ //If arm open button is pushed open the arm at full voltage.
+		setClaw(127);
+	}
+	else if(SensorValue(clawPot) >= CLOSE_VAL){ //If arm is not controlled, but closed past close point give a gipping voltage.
+		setClaw(-15);
+	}
+	else { //Else, claw will not power.
+		setClaw(0);
+	}
+}
+
 
 //ARM CONTROL SYSTEM
 void userArm(){
@@ -227,11 +252,12 @@ void userArm(){
 	}
 }
 bool armBumpVal;
+int clawtest;
 
 task usercontrol()
 {
-	startTask( pidController );
-	pidRunning = true;
+	//startTask( pidController );
+	//pidRunning = true;
 
 	// User control code here, inside the loop
 	while (true)
@@ -239,6 +265,8 @@ task usercontrol()
 		// This is the main execution loop for the user control program.
 		// Each time through the loop your program should update motor + servo
 		// values based on feedback from the joysticks.
+
+	  clawtest = SensorValue(clawPot);
 
 		armBumpVal = SensorValue(armBump) == 0;
 
