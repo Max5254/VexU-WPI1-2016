@@ -159,7 +159,7 @@ task clawPIDController(){
 
 //These could be constants but leaving as variables allows them to be modified in the debugger "live"
 float  arm_pid_Kp = 2.0;
-float  arm_pid_Kd = 0.7;
+float  arm_pid_Kd = 1.4;
 
 //Define if PID is running. Set in other functions.
 static bool armPIDRunning = true;
@@ -273,16 +273,18 @@ void userClaw(){
 
 //ARM CONTROL SYSTEM
 void userArm(){
-	if (vexRT(Btn6D)){ //If arm button is pushed set the PID requested value to dump.
+	if (vexRT(Btn6D)){ //If arm button is pushed set the PID requested value to dump and to close the claw.
 		armPIDRunning = true;
 		armPIDRequestedValue = armLimit;
+		clawPIDRunning = true;
+		clawPIDRequestedValue = CLAW_CLOSE_VAL;
 	}
 	if(!armPIDRunning && SensorValue(armBump) == 0){ //If the arm is at the bottom hold it down and zero the encoder.
 		setArm(-10); //Hold voltage applied when claw is at the base.
 		SensorValue(I2C_1) = 0; //Sets the encoder on the arm to 0.
 	}
 	else if(!armPIDRunning){ //If the arm is moving down give it the minimum voltage.
-		setArm(-50); //Downward voltage.
+		setArm(MIN_VOLTAGE); //Downward voltage.
 	}
 	else if(SensorValue(I2C_1)+10 >= armLimit){ //If the arm has reached its target disable PID.
 		armPIDRunning = false;
