@@ -30,8 +30,8 @@ bool armBumpVal; //Defines if the arm is at the bottom of its range of motion.
 /* GLOBAL INIT */
 #define MAX_VOLTAGE 127 //Maximum voltage to be applied to a motor.
 #define MIN_VOLTAGE (-127) //Minimum voltage to be applied to a motor.
-#define ARM_CLOSE_VAL 2300 //Defines the potentiometer value of where the claw is concidered "closed."
-#define ARM_OPEN_VAL 1920 //Defines the potentiometer value of where the claw is concidered "open."
+#define CLAW_CLOSE_VAL 2300 //Defines the potentiometer value of where the claw is concidered "closed."
+#define CLAW_OPEN_VAL 1920 //Defines the potentiometer value of where the claw is concidered "open."
 
 /*GLOBAL FUNCTIONS */
 
@@ -158,7 +158,7 @@ task clawPIDController(){
 /*-----------------------------------------------------------------------------*/
 
 //These could be constants but leaving as variables allows them to be modified in the debugger "live"
-float  arm_pid_Kp = 1.4;
+float  arm_pid_Kp = 2.0;
 float  arm_pid_Kd = 0.7;
 
 //Define if PID is running. Set in other functions.
@@ -185,7 +185,7 @@ task armPIDController(){
 		pidSensorCurrentValue = SensorValue[I2C_1];
 
 		//Calculate error.
-		pidError = (pidSensorCurrentValue - armPIDRequestedValue);
+		pidError = (armPIDRequestedValue - pidSensorCurrentValue);
 
 		//Calculate the derivative.
 		pidDerivative = pidError - pidLastError;
@@ -263,8 +263,8 @@ void userClaw(){
 		setClaw(MAX_VOLTAGE);
 		clawPIDRunning = false;
 	}
-	else if(SensorValue(clawPot) >= ARM_CLOSE_VAL && !clawPIDRunning){ //If arm is not controlled, but closed past close point give a gipping voltage.
-		setClaw(-15);
+	else if(SensorValue(clawPot) >= CLAW_CLOSE_VAL && !clawPIDRunning){ //If arm is not controlled, but closed past close point give a gipping voltage.
+		setClaw(-20);
 	}
 	else if(!clawPIDRunning){ //Else, claw will not power.
 		setClaw(0);
@@ -273,23 +273,25 @@ void userClaw(){
 
 //ARM CONTROL SYSTEM
 void userArm(){
-	if (vexRT(Btn6D) && SensorValue(I2C_1) < dumpHeight){ //Arm moving up
-		setArm(MAX_VOLTAGE); //Full upward voltage.
+	if (vexRT(Btn6D)){ //If arm button is pushed set the PID requested value to dump.
+		armPIDRunning = true;
+		armPIDRequestedValue = armLimit;
 	}
-	else if(vexRT(Btn6D) && SensorValue(I2C_1) < armLimit){ //Arm moving up
-		setArm(90); //Upward voltage.
-		clawPIDRunning = true;
-		clawPIDRequestedValue = ARM_OPEN_VAL; //Open claw
-	}
-	else if(SensorValue(armBump) == 0){ //Arm at bottom
+	if(!armPIDRunning && SensorValue(armBump) == 0){ //If the arm is at the bottom hold it down and zero the encoder.
 		setArm(-10); //Hold voltage applied when claw is at the base.
 		SensorValue(I2C_1) = 0; //Sets the encoder on the arm to 0.
 	}
-	else{ //Arm moving down
+	else if(!armPIDRunning){ //If the arm is moving down give it the minimum voltage.
 		setArm(-50); //Downward voltage.
 	}
+	else if(SensorValue(I2C_1)+10 >= armLimit){ //If the arm has reached its target disable PID.
+		armPIDRunning = false;
+	}
+	else if(SensorValue(I2C_1) > dumpHeight){ //If the arm is running, above the dumping value open the claw.
+		clawPIDRunning = true;
+		clawPIDRequestedValue = CLAW_OPEN_VAL; //Open claw
+	}
 }
-
 
 /* USER CONTROL CODE */
 task usercontrol()
@@ -297,7 +299,7 @@ task usercontrol()
 	//Init claw PID task:
 	startTask(clawPIDController);
 	clawPIDRunning = true;
-	clawPIDRequestedValue = ARM_OPEN_VAL;
+	clawPIDRequestedValue = CLAW_OPEN_VAL;
 
 	//Init arm PID task:
 	startTask(armPIDController);
