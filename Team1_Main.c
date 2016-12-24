@@ -7,10 +7,10 @@
 #pragma config(Motor,  port1,           A4,            tmotorVex393_HBridge, openLoop)
 #pragma config(Motor,  port2,           A1,            tmotorVex393_MC29, openLoop, reversed, encoderPort, I2C_1)
 #pragma config(Motor,  port3,           Claw1,         tmotorVex393_MC29, openLoop, reversed)
-#pragma config(Motor,  port4,           R1,            tmotorVex393TurboSpeed_MC29, openLoop, reversed)
-#pragma config(Motor,  port5,           L2YL3,         tmotorVex393TurboSpeed_MC29, openLoop, reversed)
-#pragma config(Motor,  port6,           R2YR3,         tmotorVex393TurboSpeed_MC29, openLoop, reversed)
-#pragma config(Motor,  port7,           L1,            tmotorVex393TurboSpeed_MC29, openLoop)
+#pragma config(Motor,  port4,           R1,            tmotorVex393TurboSpeed_MC29, openLoop, reversed, driveRight, encoderPort, dgtl3)
+#pragma config(Motor,  port5,           L2YL3,         tmotorVex393TurboSpeed_MC29, openLoop, reversed, driveLeft, encoderPort, dgtl1)
+#pragma config(Motor,  port6,           R2YR3,         tmotorVex393TurboSpeed_MC29, openLoop, reversed, driveRight, encoderPort, dgtl3)
+#pragma config(Motor,  port7,           L1,            tmotorVex393TurboSpeed_MC29, openLoop, driveLeft, encoderPort, dgtl1)
 #pragma config(Motor,  port8,           A2,            tmotorVex393_MC29, openLoop)
 #pragma config(Motor,  port9,           A3,            tmotorVex393_MC29, openLoop, reversed)
 #pragma config(Motor,  port10,          Claw2,         tmotorVex393_HBridge, openLoop)
@@ -97,47 +97,44 @@ void pre_auton()
 /*                                                                             */
 /*-----------------------------------------------------------------------------*/
 
-// These could be constants but leaving
-// as variables allows them to be modified in the debugger "live"
-float  pid_Kp = 1.0;
-float  pid_Kd = 0.5;
-float  deltaD = 20;
+//These could be constants but leaving as variables allows them to be modified in the debugger "live"
+float  claw_pid_Kp = 1.4;
+float  claw_pid_Kd = 0.7;
 
-static bool pidRunning = true;
-float pidRequestedValue;
-float clawPIDOutput;
+//Define if PID is running. Set in other functions.
+static bool clawPIDRunning = true;
 
-task pidController()
-{
+//Define the value requested to PID move to.
+float clawPIDRequestedValue;
+
+task clawPIDController(){
+	//Initialize variables.
 	float  pidSensorCurrentValue;
 
 	float  pidError;
 	float  pidLastError;
-	float  pidIntegral;
+
 	float  pidDerivative;
 	float  pidDrive;
 
-	// Init the variables - thanks Glenn :)
+	//Set the first error to 0.
 	pidLastError  = 0;
 
-	while(true)
-	{
-
-		// Read the sensor value and scale
+	while(true){
+		//Read the sensor value and scale.
 		pidSensorCurrentValue = SensorValue[clawPot];
 
-		// calculate error
-		pidError = (pidSensorCurrentValue - pidRequestedValue)/10;
+		//Calculate error.
+		pidError = (pidSensorCurrentValue - clawPIDRequestedValue);
 
-		// calculate the derivative
+		//Calculate the derivative.
 		pidDerivative = pidError - pidLastError;
 		pidLastError  = pidError;
 
-		// Is PID control active ?
-		if(pidRunning)
-		{
+		//If PID is running calculate the drive and set the motor.
+		if(clawPIDRunning){
 			// calculate drive
-			pidDrive = (pid_Kp * pidError) + (pid_Kd * pidDerivative);
+			pidDrive = (claw_pid_Kp * pidError) + (claw_pid_Kd * pidDerivative);
 
 			// limit drive
 			if(pidDrive > MAX_VOLTAGE)
@@ -146,14 +143,73 @@ task pidController()
 				pidDrive = MIN_VOLTAGE;
 
 			// send to motor
-			motor(Claw1) = motor(Claw2) = pidDrive ;
+			setClaw(pidDrive);
 		}
 
-		// Run at 50Hz
+		// Run task at 50Hz
 		wait1Msec(25);
 	}
 }
 
+/*-----------------------------------------------------------------------------*/
+/*                                                                             */
+/*  								          Arm PID Control Task                             */
+/*                                                                             */
+/*-----------------------------------------------------------------------------*/
+
+//These could be constants but leaving as variables allows them to be modified in the debugger "live"
+float  arm_pid_Kp = 1.4;
+float  arm_pid_Kd = 0.7;
+
+//Define if PID is running. Set in other functions.
+static bool armPIDRunning = true;
+
+//Define the value requested to PID move to.
+float armPIDRequestedValue;
+
+task armPIDController(){
+	//Initialize variables.
+	float  pidSensorCurrentValue;
+
+	float  pidError;
+	float  pidLastError;
+
+	float  pidDerivative;
+	float  pidDrive;
+
+	//Set the first error to 0.
+	pidLastError  = 0;
+
+	while(true){
+		//Read the sensor value and scale.
+		pidSensorCurrentValue = SensorValue[I2C_1];
+
+		//Calculate error.
+		pidError = (pidSensorCurrentValue - armPIDRequestedValue);
+
+		//Calculate the derivative.
+		pidDerivative = pidError - pidLastError;
+		pidLastError  = pidError;
+
+		//If PID is running calculate the drive and set the motor.
+		if(armPIDRunning){
+			// calculate drive
+			pidDrive = (arm_pid_Kp * pidError) + (arm_pid_Kd * pidDerivative);
+
+			// limit drive
+			if(pidDrive > MAX_VOLTAGE)
+				pidDrive = MAX_VOLTAGE;
+			if(pidDrive < MIN_VOLTAGE)
+				pidDrive = MIN_VOLTAGE;
+
+			// send to motor
+			setArm(pidDrive);
+		}
+
+		// Run task at 50Hz
+		wait1Msec(25);
+	}
+}
 
 /*---------------------------------------------------------------------------*/
 /*                                                                           */
@@ -201,16 +257,16 @@ void tankDrive(){
 void userClaw(){
 	if(vexRT(Btn5U)){ //If arm close button is pushed close the arm at full voltage.
 		setClaw(MIN_VOLTAGE);
-		pidRunning = false;
+		clawPIDRunning = false;
 	}
 	else if(vexRT(Btn6U)){ //If arm open button is pushed open the arm at full voltage.
 		setClaw(MAX_VOLTAGE);
-		pidRunning = false;
+		clawPIDRunning = false;
 	}
-	else if(SensorValue(clawPot) >= ARM_CLOSE_VAL && !pidRunning){ //If arm is not controlled, but closed past close point give a gipping voltage.
+	else if(SensorValue(clawPot) >= ARM_CLOSE_VAL && !clawPIDRunning){ //If arm is not controlled, but closed past close point give a gipping voltage.
 		setClaw(-15);
 	}
-	else if(!pidRunning){ //Else, claw will not power.
+	else if(!clawPIDRunning){ //Else, claw will not power.
 		setClaw(0);
 	}
 }
@@ -222,8 +278,8 @@ void userArm(){
 	}
 	else if(vexRT(Btn6D) && SensorValue(I2C_1) < armLimit){ //Arm moving up
 		setArm(90); //Upward voltage.
-		pidRunning = true;
-		pidRequestedValue = ARM_OPEN_VAL; //Open claw
+		clawPIDRunning = true;
+		clawPIDRequestedValue = ARM_OPEN_VAL; //Open claw
 	}
 	else if(SensorValue(armBump) == 0){ //Arm at bottom
 		setArm(-10); //Hold voltage applied when claw is at the base.
@@ -238,10 +294,14 @@ void userArm(){
 /* USER CONTROL CODE */
 task usercontrol()
 {
-	//Init PID task:
-	startTask(pidController);
-	pidRunning = true;
-	pidRequestedValue = ARM_OPEN_VAL;
+	//Init claw PID task:
+	startTask(clawPIDController);
+	clawPIDRunning = true;
+	clawPIDRequestedValue = ARM_OPEN_VAL;
+
+	//Init arm PID task:
+	startTask(armPIDController);
+	armPIDRunning = false;
 
 	//Loop through control systems.
 	while (true)
