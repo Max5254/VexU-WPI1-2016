@@ -26,7 +26,7 @@ bool drivePID(int mm) {
 
 	angle.kP = 1;
 	angle.kI = 0.00;
-	angle.kD = 0.35;
+	angle.kD = 0.55;
 	long stoppedTime;
 
 	int timeGuess = 7*abs(distance);//#magic number 5
@@ -92,7 +92,7 @@ bool drivePID(int mm) {
 short const turnEstimatedTimeMultiplier=3;
 //Turn PID code for autonomous.
 bool turnPID(float degrees) {
-	int distance = degrees*6.21;
+	int distance = degrees*7.44;
 	SensorValue[driveEncL] = 0;
 	SensorValue[driveEncR] = 0;
 	short maxAngleSpeed = 35;
@@ -103,9 +103,9 @@ bool turnPID(float degrees) {
 	pid angle;
 
 
-	angle.kP = 0.5;//for
+	angle.kP = 0.55;
 	angle.kI = 0.0000;
-	angle.kD = 1.0;
+	angle.kD = 1.35;
 
 	int timeGuess = turnEstimatedTimeMultiplier*abs(distance);
 	clearTimer(T2);
