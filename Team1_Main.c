@@ -23,15 +23,15 @@
 /*---------------------------------------------------------------------------*/
 
 /* DEFINE CONSTANTS */
-int dumpHeight = 1000; //Defines the height of the arm where the claw is opened.
+int dumpHeight = 950; //Defines the height of the arm where the claw is opened.
 int armLimit = 1300; //Defines the top of the arms range of motion.
-bool armBumpVal; //Defines if the arm is at the bottom of its range of motion.
 
 /* GLOBAL INIT */
 #define MAX_VOLTAGE 127 //Maximum voltage to be applied to a motor.
 #define MIN_VOLTAGE (-127) //Minimum voltage to be applied to a motor.
 #define CLAW_CLOSE_VAL 2300 //Defines the potentiometer value of where the claw is concidered "closed."
 #define CLAW_OPEN_VAL 1920 //Defines the potentiometer value of where the claw is concidered "open."
+#define inToMm 25.4 //Conversion factor for autonomous PID movement.
 
 /*GLOBAL FUNCTIONS */
 
@@ -55,15 +55,16 @@ void rightDrive(int voltage){
 	motor(R1) = motor(R2YR3) = voltage;
 }
 
-
 // This code is for the VEX cortex platform
 #pragma platform(VEX2)
 
 // Select Download method as "competition"
 #pragma competitionControl(Competition)
 
-//Main competition background code...do not modify!
-#include "Vex_Competition_Includes.c"
+//INCLUDES
+#include "Vex_Competition_Includes.c" //Main competition background code...do not modify!
+#include "PID.h"
+#include "Autonomous_Drive.c"
 
 /*---------------------------------------------------------------------------*/
 /*                          Pre-Autonomous Functions                         */
@@ -75,20 +76,10 @@ void rightDrive(int voltage){
 /*  not every time that the robot is disabled.                               */
 /*---------------------------------------------------------------------------*/
 
-void pre_auton()
-{
-	// Set bStopTasksBetweenModes to false if you want to keep user created tasks
-	// running between Autonomous and Driver controlled modes. You will need to
-	// manage all user created tasks if set to false.
-	bStopTasksBetweenModes = true;
-
-	// Set bDisplayCompetitionStatusOnLcd to false if you don't want the LCD
-	// used by the competition include file, for example, you might want
-	// to display your team name on the LCD in this function.
-	// bDisplayCompetitionStatusOnLcd = false;
-
-	// All activities that occur before the competition starts
-	// Example: clearing encoders, setting servo positions, ...
+void pre_auton(){
+	//Set encoder values to 0
+	SensorValue(driveEncL) = 0;
+	SensorValue(driveEncR) = 0;
 }
 
 /*-----------------------------------------------------------------------------*/
@@ -98,7 +89,7 @@ void pre_auton()
 /*-----------------------------------------------------------------------------*/
 
 //These could be constants but leaving as variables allows them to be modified in the debugger "live"
-float  claw_pid_Kp = 1.4;
+float  claw_pid_Kp = 1.0;
 float  claw_pid_Kd = 0.7;
 
 //Define if PID is running. Set in other functions.
@@ -221,14 +212,9 @@ task armPIDController(){
 /*  You must modify the code to add your own robot specific commands here.   */
 /*---------------------------------------------------------------------------*/
 
-task autonomous()
-{
-	// ..........................................................................
-	// Insert user code here.
-	// ..........................................................................
-
-	// Remove this function call once you have "real" code.
-	AutonomousCodePlaceholderForTesting();
+task autonomous(){
+	drivePID(72 * inToMm);
+	turnPID(90);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -247,10 +233,31 @@ void arcadeDrive(){
 	rightDrive(vexRT(Ch3) - vexRT(Ch1));
 }
 
-//TANK DRIVE SYSTEM
+//Returns the true speed of the robot based on imput.
+char trueSpeed(int power) {
+	char tsArray[128] =
+	{
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 21, 21, 22, 22, 22, 23, 24, 24,
+		25, 25, 25, 25, 26, 27, 27, 28, 28, 28,
+		28, 29, 30, 30, 30, 31, 31, 32, 32, 32,
+		33, 33, 34, 34, 35, 35, 35, 36, 36, 37,
+		37, 37, 37, 38, 38, 39, 39, 39, 40, 40,
+		41, 41, 42, 42, 43, 44, 44, 45, 45, 46,
+		46, 47, 47, 48, 48, 49, 50, 50, 51, 52,
+		52, 53, 54, 55, 56, 57, 57, 58, 59, 60,
+		61, 62, 63, 64, 65, 66, 67, 67, 68, 70,
+		71, 72, 72, 73, 74, 76, 77, 78, 79, 79,
+		80, 81, 83, 84, 84, 86, 86, 87, 87, 88,
+		88, 89, 89, 90, 90,127,127,127
+	};
+	return ((power>0)?1:-1)*tsArray[power*((power>0)?1:-1)];
+}
+
+//Tank Control Based on Real Imput
 void tankDrive(){
-	leftDrive(vexRT(Ch3));
-	rightDrive(vexRT(Ch2));
+	rightDrive(trueSpeed(vexRT[Ch3]));
+	leftDrive(trueSpeed(vexRT[Ch2]));
 }
 
 //CLAW CONTROL
@@ -277,7 +284,7 @@ void userArm(){
 		armPIDRunning = true;
 		armPIDRequestedValue = armLimit;
 		clawPIDRunning = true;
-		clawPIDRequestedValue = CLAW_CLOSE_VAL;
+		clawPIDRequestedValue = CLAW_CLOSE_VAL+250;
 	}
 	if(!armPIDRunning && SensorValue(armBump) == 0){ //If the arm is at the bottom hold it down and zero the encoder.
 		setArm(-10); //Hold voltage applied when claw is at the base.
@@ -295,12 +302,14 @@ void userArm(){
 	}
 }
 
+float testLeft;
+float testRight;
+
 /* USER CONTROL CODE */
-task usercontrol()
-{
+task usercontrol(){
 	//Init claw PID task:
 	startTask(clawPIDController);
-	clawPIDRunning = true;
+	clawPIDRunning = false;
 	clawPIDRequestedValue = CLAW_OPEN_VAL;
 
 	//Init arm PID task:
@@ -310,8 +319,8 @@ task usercontrol()
 	//Loop through control systems.
 	while (true)
 	{
-		//Sets the value of the constant depending on the bump sensor's value.
-		armBumpVal = SensorValue(armBump) == 0;
+		testLeft = SensorValue(driveEncL);
+		testRight = SensorValue(driveEncR);
 
 		//User control drive program:
 		tankDrive();
